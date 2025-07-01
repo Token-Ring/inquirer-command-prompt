@@ -46,6 +46,9 @@ class CommandPrompt extends InputPrompt {
 
     this.context = this.opt.context || '_default';
     this.historyHandler.init(this.context); // Initialize for the current context
+
+    // Store parameter examples if provided
+    this.parameterExamples = this.opt.parameterExamples || [];
   }
 
   // Static utility methods previously part of CommandPrompt history logic,
@@ -194,42 +197,73 @@ class CommandPrompt extends InputPrompt {
     }
     /** search for command at an autoComplete option */
     else if (e.key.name === 'tab') {
-      let line = this.rl.line.replace(/^ +/, '').replace(/\t/, '').replace(/ +/g, ' ');
-      try {
-        var ac; // auto-completion result
-        // Use this.context for autoCompleters object
-        if (CommandPrompt.isAsyncFunc(this.opt.autoCompletion)) {
-          ac = await autoCompleters[this.context](line);
-        } else {
-          ac = autoCompleters[this.context](line);
-        }
+      const currentLine = this.rl.line;
 
-        if (ac.match) {
-          rewrite(ac.match);
-        } else if (ac.matches) {
-          console.log(); // Newline before list
-          if (typeof process.stdout.cursorTo === 'function') {
-            process.stdout.cursorTo(0); // Move cursor to beginning of line
+      // 1. Try parameter autocompletion first
+      if (this.parameterExamples && this.parameterExamples.length > 0) {
+        // Only attempt parameter completion if currentLine is not empty
+        if (currentLine.length > 0) {
+          for (const example of this.parameterExamples) {
+            if (example.startsWith(currentLine)) {
+              rewrite(example);
+              this.render(); // Explicit render for immediate feedback after parameter completion
+              return;
+            }
           }
-          console.log(this.opt.autocompletePrompt || chalk.red('>> ') + chalk.grey('Available commands:'));
-          console.log(CommandPrompt.formatList( // Use CommandPrompt for static method
-            this.opt.short
-              ? (
-                typeof this.opt.short === 'function'
-                  ? this.opt.short(line, ac.matches) // User-provided shortener
-                  : CommandPrompt.short(line, ac.matches) // Default shortener
-              )
-              : ac.matches,
-            this.opt.maxSize,
-            this.opt.ellipsize,
-            this.opt.ellipsis
-          ));
-          rewrite(line); // Rewrite the original line after displaying suggestions
         }
-      } catch (err) {
-        console.error('Error during tab completion:', err);
-        rewrite(line); // Rewrite the original line on error
       }
+
+      // 2. If no parameter completion, proceed to existing command autocompletion
+      let lineForCommandAutocomplete = currentLine.replace(/^ +/, '').replace(/\t/, '').replace(/ +/g, ' ');
+
+      // Only attempt command autocompletion if there's content in the line (after cleaning)
+      if (lineForCommandAutocomplete.length > 0) {
+        try {
+          var ac;
+          // initAutoCompletion ensures autoCompleters[this.context] is a function.
+          if (CommandPrompt.isAsyncFunc(this.opt.autoCompletion)) { // Check original opt type
+            ac = await autoCompleters[this.context](lineForCommandAutocomplete);
+          } else if (typeof this.opt.autoCompletion === 'function' || Array.isArray(this.opt.autoCompletion)) {
+            // autoCompleters[this.context] would have been initialized by initAutoCompletion
+            // to handle arrays or sync functions.
+            if (typeof autoCompleters[this.context] === 'function') {
+                 ac = autoCompleters[this.context](lineForCommandAutocomplete);
+            } else {
+                 // This case should ideally not be reached if initAutoCompletion works correctly
+                 // and this.opt.autoCompletion was a func/array.
+                 ac = {};
+            }
+          } else {
+            // No autoCompletion configured or it's of an unexpected type
+            ac = {};
+          }
+
+          if (ac.match) {
+            rewrite(ac.match);
+          } else if (ac.matches && ac.matches.length > 0) {
+            console.log();
+            if (typeof process.stdout.cursorTo === 'function') {
+              process.stdout.cursorTo(0);
+            }
+            console.log(this.opt.autocompletePrompt || chalk.red('>> ') + chalk.grey('Available commands:'));
+            console.log(CommandPrompt.formatList(
+              this.opt.short
+                ? ( typeof this.opt.short === 'function'
+                    ? this.opt.short(lineForCommandAutocomplete, ac.matches)
+                    : CommandPrompt.short(lineForCommandAutocomplete, ac.matches) )
+                : ac.matches,
+              this.opt.maxSize, this.opt.ellipsize, this.opt.ellipsis
+            ));
+            rewrite(lineForCommandAutocomplete);
+          }
+          // If no match or empty matches, currentLine remains.
+        } catch (err) {
+          console.error('Error during tab completion:', err);
+          rewrite(currentLine); // Rewrite the original line on error
+        }
+      }
+      // If both parameter and command autocompletion are skipped (e.g. empty line for both checks),
+      // rl.line remains as it was. The render() at the end of onKeypress will refresh.
     }
     /** Display history or recall specific history entry */
     else if (e.key.name === 'right' && e.key.shift) {

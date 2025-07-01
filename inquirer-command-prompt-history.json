@@ -23,6 +23,31 @@
     ],
     "hist_display_test": [
       ""
+    ],
+    "param_ac_test_1": [
+      "git commit -m \"initial commit\""
+    ],
+    "param_ac_test_2": [
+      "ls -l"
+    ],
+    "param_ac_test_3": [
+      "git",
+      "conda activate myenv",
+      "git",
+      "conda activate myenv"
+    ],
+    "param_ac_test_4": [
+      "myCommand"
+    ],
+    "param_ac_test_4_empty": [
+      "anotherCommand"
+    ],
+    "param_ac_test_5_empty_input": [
+      "regularCmdtyped after tab",
+      "typed after tab"
+    ],
+    "param_ac_test_6_no_match": [
+      "nonexistent"
     ]
   }
 }

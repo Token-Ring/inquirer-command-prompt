@@ -344,6 +344,152 @@ describe('inquirer-command-prompt', function () {
     });
   });
 
+  describe('Parameter Auto-completion', function () {
+    beforeEach(function () {
+      rl = new ReadlineStub();
+      PromptModule.setConfig({}); // Reset global config
+    });
+
+    it('should complete with the first matching parameter example', async function () {
+      prompt = new PromptModule({
+        message: '>',
+        name: 'cmd',
+        context: 'param_ac_test_1',
+        parameterExamples: ['git commit -m "initial commit"', 'git commit --amend', 'git push origin main']
+      }, rl);
+
+      let answerPromise = getPromiseForAnswer(prompt);
+      type(rl, 'git c');
+      tab(rl);
+      await Promise.resolve(); // Allow potential microtasks from rewrite/render
+      enter(rl);
+      await answerPromise;
+      assert.strictEqual(prompt.answer, 'git commit -m "initial commit"');
+    });
+
+    it('should use the first example if multiple could match the prefix', async function () {
+      prompt = new PromptModule({
+        message: '>',
+        name: 'cmd',
+        context: 'param_ac_test_2',
+        parameterExamples: ['ls -l', 'ls -la', 'ls -lh']
+      }, rl);
+
+      let answerPromise = getPromiseForAnswer(prompt);
+      type(rl, 'ls -');
+      tab(rl);
+      await Promise.resolve();
+      enter(rl);
+      await answerPromise;
+      assert.strictEqual(prompt.answer, 'ls -l');
+    });
+
+    it('should fall back to command autocompletion if no parameter example matches', async function () {
+      prompt = new PromptModule({
+        message: '>',
+        name: 'cmd',
+        context: 'param_ac_test_3',
+        parameterExamples: ['conda activate myenv', 'conda install numpy'],
+        autoCompletion: ['git', 'conda', 'node'] // Regular command completion
+      }, rl);
+
+      // First, test fallback: type 'gi', tab -> should complete to 'git'
+      let answerPromise = getPromiseForAnswer(prompt);
+      type(rl, 'gi');
+      tab(rl); // 'gi' does not match 'conda...' examples, should use autoCompletion
+      await Promise.resolve();
+      enter(rl);
+      await answerPromise;
+      assert.strictEqual(prompt.answer, 'git', 'Should fall back to command autocompletion');
+
+      // Next, test parameter completion still works for this prompt
+      rl.line = ''; // Reset line
+      answerPromise = getPromiseForAnswer(prompt);
+      type(rl, 'conda a');
+      tab(rl); // Should match 'conda activate myenv'
+      await Promise.resolve();
+      enter(rl);
+      await answerPromise;
+      assert.strictEqual(prompt.answer, 'conda activate myenv', 'Should use parameter completion when it matches');
+    });
+
+    it('should use command autocompletion if parameterExamples is not provided or empty', async function () {
+      prompt = new PromptModule({
+        message: '>',
+        name: 'cmd',
+        context: 'param_ac_test_4',
+        // No parameterExamples here
+        autoCompletion: ['myCommand', 'anotherCommand']
+      }, rl);
+
+      let answerPromise = getPromiseForAnswer(prompt);
+      type(rl, 'myC');
+      tab(rl);
+      await Promise.resolve();
+      enter(rl);
+      await answerPromise;
+      assert.strictEqual(prompt.answer, 'myCommand');
+
+      // Test with empty parameterExamples array
+      prompt = new PromptModule({
+        message: '>',
+        name: 'cmd',
+        context: 'param_ac_test_4_empty',
+        parameterExamples: [],
+        autoCompletion: ['myCommand', 'anotherCommand']
+      }, rl);
+
+      rl.line = '';
+      answerPromise = getPromiseForAnswer(prompt);
+      type(rl, 'anoth');
+      tab(rl);
+      await Promise.resolve();
+      enter(rl);
+      await answerPromise;
+      assert.strictEqual(prompt.answer, 'anotherCommand');
+    });
+
+    it('should do nothing on Tab if input is empty', async function () {
+      prompt = new PromptModule({
+        message: '>',
+        name: 'cmd',
+        context: 'param_ac_test_5_empty_input',
+        parameterExamples: ['some command', 'another one'],
+        autoCompletion: ['regularCmd']
+      }, rl);
+
+      let answerPromise = getPromiseForAnswer(prompt);
+      // rl.line is already ''
+      tab(rl); // Press tab on empty line
+      await Promise.resolve();
+      // Type something to submit, as tab should not have completed.
+      type(rl, 'typed after tab');
+      enter(rl);
+      await answerPromise;
+      // The crucial part is that tab didn't fill 'some command'
+      assert.strictEqual(prompt.answer, 'typed after tab');
+    });
+
+    it('should do nothing on Tab if input does not prefix any example or command', async function () {
+      prompt = new PromptModule({
+        message: '>',
+        name: 'cmd',
+        context: 'param_ac_test_6_no_match',
+        parameterExamples: ['git commit', 'git push'],
+        autoCompletion: ['conda', 'node']
+      }, rl);
+
+      let answerPromise = getPromiseForAnswer(prompt);
+      type(rl, 'nonexistent');
+      tab(rl); // No match in parameters or commands
+      await Promise.resolve();
+      // Line should remain 'nonexistent'
+      enter(rl); // Submit current line
+      await answerPromise;
+      assert.strictEqual(prompt.answer, 'nonexistent');
+    });
+  });
+
   describe('DefaultHistory (Unit Tests)', function () {
     let defaultHistoryInstance;
     const TEST_CONTEXT = 'default_hist_unit_ctx';
