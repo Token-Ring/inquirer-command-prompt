@@ -139,19 +139,74 @@ describe('inquirer-command-prompt', function () {
       answerPromise = getPromiseForAnswer(prompt); type(rl, 'cmd2'); enter(rl); await answerPromise;
       assert.strictEqual(prompt.answer, 'cmd2', "Prompt 2 answer should be cmd2");
 
-      // Prompt 3 (for navigation and final submission)
-      rl.line = ''; // Reset line for prompt 3
+      // Prompt 3: Navigate up to 'cmd2' and submit
+      rl.line = '';
       answerPromise = getPromiseForAnswer(prompt);
-      moveUp(rl); assert.strictEqual(rl.line, 'cmd2', 'Nav up to cmd2');
-      moveUp(rl); assert.strictEqual(rl.line, 'cmd1', 'Nav up to cmd1');
-      moveUp(rl); assert.strictEqual(rl.line, 'cmd1', 'Stay at cmd1 (top)');
-      moveDown(rl); assert.strictEqual(rl.line, 'cmd2', 'Nav down to cmd2');
-      moveDown(rl); assert.strictEqual(rl.line, '', 'Nav down to new empty line'); // HistoryHandler.getNext returns undefined, onKeypress rewrites ''
-      moveDown(rl); assert.strictEqual(rl.line, '', 'Stay at empty line');
+      moveUp(rl); // Expected: line is now 'cmd2' internally by end of onKeypress
+      await Promise.resolve(); // Allow microtasks to settle
+      enter(rl);
+      await answerPromise;
+      assert.strictEqual(prompt.answer, 'cmd2', 'Should submit "cmd2" after one moveUp');
 
-      type(rl, 'cmd3'); // Type the final command
-      enter(rl); // Submit it
-      await answerPromise; // Wait for this prompt to resolve
+      // Prompt 4: Navigate up to 'cmd1' and submit
+      rl.line = '';
+      answerPromise = getPromiseForAnswer(prompt);
+      moveUp(rl);
+      moveUp(rl);
+      await Promise.resolve(); // Allow microtasks to settle
+      enter(rl);
+      await answerPromise;
+      assert.strictEqual(prompt.answer, 'cmd1', 'Should submit "cmd1" after two moveUps');
+
+      // Prompt 5: Navigate up to 'cmd1' (stay at top) and submit
+      rl.line = '';
+      answerPromise = getPromiseForAnswer(prompt);
+      moveUp(rl);
+      moveUp(rl);
+      moveUp(rl);
+      await Promise.resolve(); // Allow microtasks to settle
+      enter(rl);
+      await answerPromise;
+      assert.strictEqual(prompt.answer, 'cmd1', 'Should submit "cmd1" after moving up multiple times at the top');
+
+      // Prompt 6: Navigate up then down, and submit 'cmd1'
+      rl.line = '';
+      answerPromise = getPromiseForAnswer(prompt);
+      moveUp(rl);
+      moveUp(rl);
+      moveDown(rl);
+      await Promise.resolve(); // Allow microtasks to settle
+      enter(rl);
+      await answerPromise;
+      assert.strictEqual(prompt.answer, 'cmd1', 'Should submit "cmd1" after moving up, up, then down');
+
+      // Prompt 7: Navigate to new empty line and submit it
+      rl.line = '';
+      answerPromise = getPromiseForAnswer(prompt);
+      moveUp(rl);
+      moveDown(rl);
+      await Promise.resolve(); // Allow microtasks to settle
+      enter(rl);
+      await answerPromise;
+      assert.strictEqual(prompt.answer, '', 'Should submit empty string after navigating to new line');
+
+      // Prompt 8: Navigate to new empty line (stay at bottom) and submit it
+      rl.line = '';
+      answerPromise = getPromiseForAnswer(prompt);
+      moveUp(rl);
+      moveDown(rl);
+      moveDown(rl);
+      await Promise.resolve(); // Allow microtasks to settle
+      enter(rl);
+      await answerPromise;
+      assert.strictEqual(prompt.answer, '', 'Should submit empty string after moving down multiple times at the bottom');
+
+      // Prompt 9: Type a new command and submit it (original test behavior - no microtask pause needed here as type() sets rl.line directly)
+      rl.line = '';
+      answerPromise = getPromiseForAnswer(prompt);
+      type(rl, 'cmd3');
+      enter(rl);
+      await answerPromise;
       assert.strictEqual(prompt.answer, 'cmd3', 'Final command submitted should be cmd3');
     });
 
@@ -250,13 +305,42 @@ describe('inquirer-command-prompt', function () {
       sinon.assert.calledWith(mockHistoryHandler.init, 'custom_hist_test');
       sinon.assert.calledWith(mockHistoryHandler.setConfig, sinon.match({ customSetting: true }));
 
-      let p = getPromiseForAnswer(prompt);
-      moveUp(rl); assert.strictEqual(rl.line, 'mock_prev_cmd');
+      // Test navigating up with custom handler
+      rl.line = '';
+      let answerPromise = getPromiseForAnswer(prompt);
+      moveUp(rl); // Should use mockHistoryHandler.getPrevious
+      await Promise.resolve(); // Allow microtasks to settle
+      enter(rl);
+      await answerPromise;
+      assert.strictEqual(prompt.answer, 'mock_prev_cmd', 'Should submit "mock_prev_cmd" from custom handler');
       sinon.assert.calledOnce(mockHistoryHandler.getPrevious);
-      moveDown(rl); assert.strictEqual(rl.line, 'mock_next_cmd');
-      sinon.assert.calledOnce(mockHistoryHandler.getNext);
-      type(rl, 'new_custom_cmd'); enter(rl); await p;
+      sinon.assert.calledWith(mockHistoryHandler.add, 'custom_hist_test', 'mock_prev_cmd');
+
+      // Test navigating down with custom handler
+      rl.line = '';
+      answerPromise = getPromiseForAnswer(prompt);
+      moveDown(rl); // Should use mockHistoryHandler.getNext
+      await Promise.resolve(); // Allow microtasks to settle
+      enter(rl);
+      await answerPromise;
+      assert.strictEqual(prompt.answer, 'mock_next_cmd', 'Should submit "mock_next_cmd" from custom handler');
+      sinon.assert.calledOnce(mockHistoryHandler.getNext); // This will now be calledTwice if getPrevious was called once
+      // Let's adjust sinon assertions for getPrevious/getNext to be specific to these interactions
+      // or ensure they are reset if that's the mock's behavior.
+      // Stubs are not reset automatically. So getPrevious is calledOnce, getNext is calledOnce. Correct.
+      sinon.assert.calledWith(mockHistoryHandler.add, 'custom_hist_test', 'mock_next_cmd');
+
+      // Test typing a new command and submitting with custom handler
+      // No microtask pause needed here as type() sets rl.line directly before enter()
+      rl.line = '';
+      answerPromise = getPromiseForAnswer(prompt);
+      type(rl, 'new_custom_cmd');
+      enter(rl);
+      await answerPromise;
+      assert.strictEqual(prompt.answer, 'new_custom_cmd', 'Should submit typed "new_custom_cmd"');
       sinon.assert.calledWith(mockHistoryHandler.add, 'custom_hist_test', 'new_custom_cmd');
+
+      sinon.assert.calledThrice(mockHistoryHandler.add); // add is called for each of the 3 submits
     });
   });
 
