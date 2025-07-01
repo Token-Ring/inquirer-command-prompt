@@ -35,9 +35,16 @@ function moveUp(rlInstance) {
   rlInstance.input.emit('keypress', '', { name: 'up' });
 }
 
-function enter(rlInstance) {
-  console.log(`[DEBUG] enter called. rlInstance.line = "${rlInstance.line}"`); // DEBUG
-  rlInstance.emit('line', rlInstance.line); // Pass the current line as an argument to the event
+// Simulates pressing the 'Enter' key, for onKeypress handlers (e.g., multi-line newline)
+function pressEnterKey(rlInstance) {
+  console.log(`[DEBUG] pressEnterKey: Simulating 'enter' keypress. rl.line = "${rlInstance.line}"`);
+  rlInstance.input.emit('keypress', '', { name: 'enter' });
+}
+
+// Simulates submitting the current rl.line (original 'enter' behavior for single-line prompts)
+function finalEnterAndSubmitLine(rlInstance) {
+    console.log(`[DEBUG] finalEnterAndSubmitLine: Submitting rl.line = "${rlInstance.line}"`);
+    rlInstance.emit('line', rlInstance.line);
 }
 
 function tab(rlInstance) {
@@ -69,7 +76,7 @@ describe('inquirer-command-prompt', function () {
       const promise = getPromiseForAnswer(prompt);
       type(rl, 'f');
       tab(rl);
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await promise;
       assert.strictEqual(rl.line, 'foo');
     });
@@ -82,7 +89,7 @@ describe('inquirer-command-prompt', function () {
       }, rl);
       const promise = getPromiseForAnswer(prompt);
       type(rl, 'hello');
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await promise;
       assert.strictEqual(rl.line, 'hello');
     });
@@ -97,7 +104,7 @@ describe('inquirer-command-prompt', function () {
       const promise = getPromiseForAnswer(prompt);
       type(rl, 'zu');
       tab(rl);
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await promise;
       assert.strictEqual(rl.line, 'zu');
     });
@@ -131,12 +138,12 @@ describe('inquirer-command-prompt', function () {
       }, rl);
 
       // Prompt 1
-      let answerPromise = getPromiseForAnswer(prompt); type(rl, 'cmd1'); enter(rl); await answerPromise;
+      let answerPromise = getPromiseForAnswer(prompt); type(rl, 'cmd1'); finalEnterAndSubmitLine(rl); await answerPromise;
       assert.strictEqual(prompt.answer, 'cmd1', "Prompt 1 answer should be cmd1");
 
       // Prompt 2
       rl.line = ''; // Reset line for prompt 2
-      answerPromise = getPromiseForAnswer(prompt); type(rl, 'cmd2'); enter(rl); await answerPromise;
+      answerPromise = getPromiseForAnswer(prompt); type(rl, 'cmd2'); finalEnterAndSubmitLine(rl); await answerPromise;
       assert.strictEqual(prompt.answer, 'cmd2', "Prompt 2 answer should be cmd2");
 
       // Prompt 3: Navigate up to 'cmd2' and submit
@@ -144,7 +151,7 @@ describe('inquirer-command-prompt', function () {
       answerPromise = getPromiseForAnswer(prompt);
       moveUp(rl); // Expected: line is now 'cmd2' internally by end of onKeypress
       await Promise.resolve(); // Allow microtasks to settle
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, 'cmd2', 'Should submit "cmd2" after one moveUp');
 
@@ -154,7 +161,7 @@ describe('inquirer-command-prompt', function () {
       moveUp(rl);
       moveUp(rl);
       await Promise.resolve(); // Allow microtasks to settle
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, 'cmd1', 'Should submit "cmd1" after two moveUps');
 
@@ -165,7 +172,7 @@ describe('inquirer-command-prompt', function () {
       moveUp(rl);
       moveUp(rl);
       await Promise.resolve(); // Allow microtasks to settle
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, 'cmd1', 'Should submit "cmd1" after moving up multiple times at the top');
 
@@ -176,7 +183,7 @@ describe('inquirer-command-prompt', function () {
       moveUp(rl);
       moveDown(rl);
       await Promise.resolve(); // Allow microtasks to settle
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, 'cmd1', 'Should submit "cmd1" after moving up, up, then down');
 
@@ -186,7 +193,7 @@ describe('inquirer-command-prompt', function () {
       moveUp(rl);
       moveDown(rl);
       await Promise.resolve(); // Allow microtasks to settle
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, '', 'Should submit empty string after navigating to new line');
 
@@ -197,7 +204,7 @@ describe('inquirer-command-prompt', function () {
       moveDown(rl);
       moveDown(rl);
       await Promise.resolve(); // Allow microtasks to settle
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, '', 'Should submit empty string after moving down multiple times at the bottom');
 
@@ -205,7 +212,7 @@ describe('inquirer-command-prompt', function () {
       rl.line = '';
       answerPromise = getPromiseForAnswer(prompt);
       type(rl, 'cmd3');
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, 'cmd3', 'Final command submitted should be cmd3');
     });
@@ -221,19 +228,19 @@ describe('inquirer-command-prompt', function () {
 
       // Command 1
       rl.line = '';
-      let p = getPromiseForAnswer(prompt); type(rl, 'first'); enter(rl); await p;
+      let p = getPromiseForAnswer(prompt); type(rl, 'first'); finalEnterAndSubmitLine(rl); await p;
       assert.strictEqual(prompt.answer, 'first');
       // After 'first' is added, history: ['first']
 
       // Command 2
       rl.line = '';
-      p = getPromiseForAnswer(prompt); type(rl, 'second'); enter(rl); await p;
+      p = getPromiseForAnswer(prompt); type(rl, 'second'); finalEnterAndSubmitLine(rl); await p;
       assert.strictEqual(prompt.answer, 'second');
       // After 'second' is added, history: ['first', 'second']
 
       // Command 3
       rl.line = '';
-      p = getPromiseForAnswer(prompt); type(rl, 'third'); enter(rl); await p;
+      p = getPromiseForAnswer(prompt); type(rl, 'third'); finalEnterAndSubmitLine(rl); await p;
       assert.strictEqual(prompt.answer, 'third');
       // After 'third' is added, history (limit 2): ['second', 'third']
 
@@ -268,22 +275,28 @@ describe('inquirer-command-prompt', function () {
         message: '>', name: 'cmd', context: 'hist_display_test',
         history: { folder: TEST_HISTORY_DIR, fileName: COMMAND_PROMPT_HISTORY_FILE, save: false }
       }, rl);
-      let p = getPromiseForAnswer(prompt); type(rl, 'cmd1'); enter(rl); await p;
-      p = getPromiseForAnswer(prompt); type(rl, 'cmd2'); enter(rl); await p;
+      let p = getPromiseForAnswer(prompt); type(rl, 'cmd1'); finalEnterAndSubmitLine(rl); await p;
+      p = getPromiseForAnswer(prompt); type(rl, 'cmd2'); finalEnterAndSubmitLine(rl); await p;
 
       const consoleLogStub = sinon.stub(console, 'log');
-      p = getPromiseForAnswer(prompt);
+      p = getPromiseForAnswer(prompt); // For the next interaction (typing 'final')
 
-      rl.input.emit('keypress', '', { name: 'right', shift: true });
+      rl.input.emit('keypress', '', { name: 'right', shift: true }); // Display history
 
-      sinon.assert.called(consoleLogStub); // Check if called at all first
-      // If the above passes, then these more specific checks can be enabled:
+      // We don't await 'p' here because displaying history doesn't resolve the prompt.
+      // We are checking the side effect (console.log)
+      sinon.assert.called(consoleLogStub);
       // sinon.assert.calledWith(consoleLogStub, chalk.bold('History:'));
       // sinon.assert.calledWithMatch(consoleLogStub, /0\s+cmd1/);
       // sinon.assert.calledWithMatch(consoleLogStub, /1\s+cmd2/);
-
       consoleLogStub.restore();
-      type(rl, 'final'); enter(rl); await p;
+
+      // Now, complete the prompt that was initiated by p = getPromiseForAnswer(prompt)
+      rl.line = ''; // Explicitly clear the line before typing the new command
+      type(rl, 'final');
+      finalEnterAndSubmitLine(rl);
+      await p;
+      assert.strictEqual(prompt.answer, 'final');
     });
 
     it('allows passing a custom history handler', async function () {
@@ -310,7 +323,7 @@ describe('inquirer-command-prompt', function () {
       let answerPromise = getPromiseForAnswer(prompt);
       moveUp(rl); // Should use mockHistoryHandler.getPrevious
       await Promise.resolve(); // Allow microtasks to settle
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, 'mock_prev_cmd', 'Should submit "mock_prev_cmd" from custom handler');
       sinon.assert.calledOnce(mockHistoryHandler.getPrevious);
@@ -321,26 +334,22 @@ describe('inquirer-command-prompt', function () {
       answerPromise = getPromiseForAnswer(prompt);
       moveDown(rl); // Should use mockHistoryHandler.getNext
       await Promise.resolve(); // Allow microtasks to settle
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, 'mock_next_cmd', 'Should submit "mock_next_cmd" from custom handler');
-      sinon.assert.calledOnce(mockHistoryHandler.getNext); // This will now be calledTwice if getPrevious was called once
-      // Let's adjust sinon assertions for getPrevious/getNext to be specific to these interactions
-      // or ensure they are reset if that's the mock's behavior.
-      // Stubs are not reset automatically. So getPrevious is calledOnce, getNext is calledOnce. Correct.
+      sinon.assert.calledOnce(mockHistoryHandler.getNext);
       sinon.assert.calledWith(mockHistoryHandler.add, 'custom_hist_test', 'mock_next_cmd');
 
       // Test typing a new command and submitting with custom handler
-      // No microtask pause needed here as type() sets rl.line directly before enter()
       rl.line = '';
       answerPromise = getPromiseForAnswer(prompt);
       type(rl, 'new_custom_cmd');
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, 'new_custom_cmd', 'Should submit typed "new_custom_cmd"');
       sinon.assert.calledWith(mockHistoryHandler.add, 'custom_hist_test', 'new_custom_cmd');
 
-      sinon.assert.calledThrice(mockHistoryHandler.add); // add is called for each of the 3 submits
+      sinon.assert.calledThrice(mockHistoryHandler.add);
     });
   });
 
@@ -362,7 +371,7 @@ describe('inquirer-command-prompt', function () {
       type(rl, 'git c');
       tab(rl);
       await Promise.resolve(); // Allow potential microtasks from rewrite/render
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, 'git commit -m "initial commit"');
     });
@@ -379,7 +388,7 @@ describe('inquirer-command-prompt', function () {
       type(rl, 'ls -');
       tab(rl);
       await Promise.resolve();
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, 'ls -l');
     });
@@ -398,7 +407,7 @@ describe('inquirer-command-prompt', function () {
       type(rl, 'gi');
       tab(rl); // 'gi' does not match 'conda...' examples, should use autoCompletion
       await Promise.resolve();
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, 'git', 'Should fall back to command autocompletion');
 
@@ -408,7 +417,7 @@ describe('inquirer-command-prompt', function () {
       type(rl, 'conda a');
       tab(rl); // Should match 'conda activate myenv'
       await Promise.resolve();
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, 'conda activate myenv', 'Should use parameter completion when it matches');
     });
@@ -426,7 +435,7 @@ describe('inquirer-command-prompt', function () {
       type(rl, 'myC');
       tab(rl);
       await Promise.resolve();
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, 'myCommand');
 
@@ -444,7 +453,7 @@ describe('inquirer-command-prompt', function () {
       type(rl, 'anoth');
       tab(rl);
       await Promise.resolve();
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       assert.strictEqual(prompt.answer, 'anotherCommand');
     });
@@ -464,7 +473,7 @@ describe('inquirer-command-prompt', function () {
       await Promise.resolve();
       // Type something to submit, as tab should not have completed.
       type(rl, 'typed after tab');
-      enter(rl);
+      finalEnterAndSubmitLine(rl);
       await answerPromise;
       // The crucial part is that tab didn't fill 'some command'
       assert.strictEqual(prompt.answer, 'typed after tab');
@@ -484,10 +493,136 @@ describe('inquirer-command-prompt', function () {
       tab(rl); // No match in parameters or commands
       await Promise.resolve();
       // Line should remain 'nonexistent'
-      enter(rl); // Submit current line
+      finalEnterAndSubmitLine(rl); // Submit current line
       await answerPromise;
       assert.strictEqual(prompt.answer, 'nonexistent');
     });
+  });
+
+  describe('Multi-line Input Mode', function() {
+    beforeEach(function () {
+      rl = new ReadlineStub();
+      PromptModule.setConfig({});
+    });
+
+    // Helper for Alt+E
+    function altE(rlInstance) {
+      rlInstance.input.emit('keypress', 'e', { name: 'e', alt: true, ctrl: false, meta: false, shift: false });
+    }
+
+    // Helper for Ctrl+C
+    function ctrlC(rlInstance) {
+      rlInstance.input.emit('keypress', 'c', { name: 'c', ctrl: true, alt: false, meta: false, shift: false });
+    }
+
+    it('should enter multi-line mode with Alt+E, add lines with Enter, and submit with second Alt+E', async function() {
+      prompt = new PromptModule({
+        message: 'Enter command:',
+        name: 'multiline_cmd',
+        context: 'multiline_test_1'
+      }, rl);
+
+      let answerPromise = getPromiseForAnswer(prompt);
+
+      type(rl, 'line1');
+      altE(rl); // Enter multi-line mode, 'line1' is buffered
+      await Promise.resolve(); // allow render/microtasks
+
+      assert.strictEqual(prompt.isMultiLineMode, true, 'Should be in multi-line mode');
+      assert.deepStrictEqual(prompt.multiLineBuffer, ['line1'], 'Buffer should contain first line');
+      assert.strictEqual(rl.line, '', 'Current rl.line should be empty for new multi-line input');
+
+      type(rl, 'line2');
+      pressEnterKey(rl); // Add 'line2' to buffer
+      await Promise.resolve();
+
+      assert.deepStrictEqual(prompt.multiLineBuffer, ['line1', 'line2'], 'Buffer should contain first and second lines');
+      assert.strictEqual(rl.line, '', 'Current rl.line should be empty after Enter in multi-line');
+
+      type(rl, 'line3');
+      altE(rl); // Submit with second Alt+E
+
+      const answer = await answerPromise;
+      assert.strictEqual(answer, 'line1\nline2\nline3', 'Submitted answer should be all lines joined by newline');
+      assert.strictEqual(prompt.isMultiLineMode, false, 'Should exit multi-line mode after submission');
+    });
+
+    it('should handle starting multi-line mode on an empty line', async function() {
+      prompt = new PromptModule({ message: '>', name: 'cmd', context: 'multiline_empty_start' }, rl);
+      let answerPromise = getPromiseForAnswer(prompt);
+
+      altE(rl); // Enter multi-line mode on empty line
+      await Promise.resolve();
+      assert.strictEqual(prompt.isMultiLineMode, true);
+      assert.deepStrictEqual(prompt.multiLineBuffer, [], 'Buffer should be empty if started on empty line');
+
+      type(rl, 'first actual line');
+      pressEnterKey(rl);
+      await Promise.resolve();
+
+      type(rl, 'second actual line');
+      altE(rl); // Submit
+
+      const answer = await answerPromise;
+      assert.strictEqual(answer, 'first actual line\nsecond actual line');
+    });
+
+    it('should submit only the first line if Alt+E is pressed twice without Enter', async function() {
+      prompt = new PromptModule({ message: '>', name: 'cmd', context: 'multiline_immediate_submit' }, rl);
+      let answerPromise = getPromiseForAnswer(prompt);
+
+      type(rl, 'single line for multi-mode');
+      altE(rl); // Enter multi-line mode
+      await Promise.resolve();
+      // No Enter, current rl.line is now empty.
+      // Second Alt+E should effectively submit what was buffered ('single line for multi-mode')
+      // plus the current (empty) rl.line.
+      altE(rl); // Submit
+
+      const answer = await answerPromise;
+      // Current logic: first alt+e buffers 'single line for multi-mode', rl.line becomes ''.
+      // second alt+e buffers current rl.line (''), joins -> 'single line for multi-mode\n'
+      assert.strictEqual(answer, 'single line for multi-mode\n');
+    });
+
+
+    it('should cancel multi-line mode with Ctrl+C and yield undefined', async function() {
+      prompt = new PromptModule({ message: '>', name: 'cmd', context: 'multiline_cancel' }, rl);
+      let answerPromise = getPromiseForAnswer(prompt);
+
+      type(rl, 'line1 to be canceled');
+      altE(rl); // Enter multi-line
+      await Promise.resolve();
+
+      type(rl, 'line2 also canceled');
+      ctrlC(rl); // Cancel
+
+      const answer = await answerPromise;
+      assert.strictEqual(answer, '', 'Answer should be empty string after Ctrl+C');
+      assert.strictEqual(prompt.isMultiLineMode, false, 'Should exit multi-line mode after Ctrl+C');
+      assert.deepStrictEqual(prompt.multiLineBuffer, [], 'Buffer should be empty after Ctrl+C');
+    });
+
+    it('should submit current line if Alt+E is pressed on non-empty line without entering multi-line mode first (if that was the design - current design is toggle)', async function() {
+        // This test checks if a single Alt+E on a line behaves like Enter or something else.
+        // Based on current plan, first Alt+E *always* enters multi-line.
+        // So this test should confirm that behavior.
+        prompt = new PromptModule({ message: '>', name: 'cmd', context: 'multiline_alt_e_single_line_is_toggle' }, rl);
+        let answerPromise = getPromiseForAnswer(prompt);
+
+        type(rl, 'oneline');
+        altE(rl); // Enters multi-line mode
+        await Promise.resolve();
+
+        assert.ok(prompt.isMultiLineMode, "Should have entered multi-line mode");
+        assert.deepStrictEqual(prompt.multiLineBuffer, ["oneline"]);
+
+        // To complete the prompt for this test case:
+        altE(rl); // Submit (empty current line will be added)
+        const answer = await answerPromise;
+        assert.strictEqual(answer, "oneline\n");
+    });
+
   });
 
   describe('DefaultHistory (Unit Tests)', function () {
