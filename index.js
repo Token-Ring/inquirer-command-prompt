@@ -5,6 +5,11 @@ import chalk from 'chalk';
 import _ from 'lodash';
 import InputPrompt from 'inquirer/lib/prompts/input.js';
 import DefaultHistory from './DefaultHistory.js';
+import { fromEvent, Subject } from 'rxjs'; // Added Subject
+import { takeUntil } from 'rxjs/operators/index.js'; // Changed this line
+import observe from 'inquirer/lib/utils/events.js';
+// import RealBase from 'inquirer/lib/prompts/base.js'; // Removed this import
+
 
 // autoCompleters will store autocompletion functions keyed by context.
 const autoCompleters = {};
@@ -16,6 +21,8 @@ const ELLIPSIS = '…'
 class CommandPrompt extends InputPrompt {
   constructor(...args) {
     super(...args);
+
+    // Constructor "fix" for onSubmit/validate removed as we will avoid calling them directly from CommandPrompt
 
     const historyOptions = this.opt.history || {};
     const globalHistoryConfig = (globalConfig && globalConfig.history) || {};
@@ -49,6 +56,10 @@ class CommandPrompt extends InputPrompt {
 
     // Store parameter examples if provided
     this.parameterExamples = this.opt.parameterExamples || [];
+
+    // Initialize multi-line mode properties
+    this.isMultiLineMode = false;
+    this.multiLineBuffer = [];
   }
 
   // Static utility methods previously part of CommandPrompt history logic,
@@ -158,6 +169,7 @@ class CommandPrompt extends InputPrompt {
  }
 
  async onKeypress(e) {
+    // console.log('[KEYPRESS_EVENT]', JSON.stringify(e, null, 2)); // DEBUG: Log the raw event object
 
   if (this.opt.onBeforeKeyPress) {
    this.opt.onBeforeKeyPress(e)
@@ -168,10 +180,68 @@ class CommandPrompt extends InputPrompt {
     line = this.opt.onBeforeRewrite(line)
    }
    this.rl.line = line
-   console.log(`[DEBUG CommandPrompt.rewrite] this.rl.line set to: "${this.rl.line}"`); // DEBUG
+   // console.log(`[DEBUG CommandPrompt.rewrite] this.rl.line set to: "${this.rl.line}"`); // DEBUG
    this.rl.write(null, {ctrl: true, name: 'e'})
   }
 
+    // Handle Alt+E for multi-line mode toggling
+    if (e.key.name === 'e' && e.key.alt) {
+      if (this.isMultiLineMode) {
+        // Exiting multi-line mode: submit the buffered content + current line
+        this.multiLineBuffer.push(this.rl.line);
+        const finalAnswer = this.multiLineBuffer.join('\n');
+        this.multiLineBuffer = [];
+        this.isMultiLineMode = false;
+
+        this.rl.line = finalAnswer; // Set the line to the final multi-line string
+        this.rl.emit('line', this.rl.line); // Emit 'line' event to be handled by InputPrompt._run
+        return;
+      } else {
+        // Entering multi-line mode
+        this.isMultiLineMode = true;
+        if (this.rl.line) { // Buffer current line if not empty
+          this.multiLineBuffer.push(this.rl.line);
+        }
+        this.rl.line = ''; // Clear current line for new multi-line input
+        this.render(); // Re-render to show multi-line indicator or change prompt
+        this.rl.prompt(true); // Ensure readline prompt is refreshed
+        return;
+      }
+    }
+
+    // Handle Enter in multi-line mode
+    // This block is removed because 'enter' keypress events are filtered by Inquirer's event system
+    // and will not reach this part of the onKeypress handler.
+    // A new strategy for handling newlines in multi-line mode will be implemented.
+    /*
+    if (this.isMultiLineMode && e.key.name === 'enter') {
+      // console.log(`[CMDPrompt DEBUG] Multi-line Enter: rl.line = "${this.rl.line}", key name = "${e.key.name}"`);
+      this.multiLineBuffer.push(this.rl.line);
+      this.rl.line = '';
+      this.render();
+      return;
+    }
+    */
+
+    // Handle Ctrl+C to cancel multi-line mode
+    if (this.isMultiLineMode && e.key.name === 'c' && e.key.ctrl) {
+      this.isMultiLineMode = false;
+      this.multiLineBuffer = [];
+      this.rl.line = ''; // Clear the line, this will be the value submitted
+      // this.status = 'canceled'; // Not setting status directly
+      this.rl.emit('line', this.rl.line); // Emit 'line' event with empty string
+      // render() will be called by the normal Inquirer flow after 'line' event.
+      return;
+    }
+
+    // If in multi-line mode, and the key wasn't one of the above special keys,
+    // allow normal key processing but don't trigger history/autocomplete.
+    if (this.isMultiLineMode) {
+      this.render(); // Render to reflect typed character
+      return;
+    }
+
+    // --- Existing keypress logic (history, autocomplete, etc.) ---
     // this.context is initialized in the constructor.
     // Ensure history is initialized for the context (also done in constructor, but harmless here).
     this.historyHandler.init(this.context);
@@ -267,6 +337,7 @@ class CommandPrompt extends InputPrompt {
     }
     /** Display history or recall specific history entry */
     else if (e.key.name === 'right' && e.key.shift) {
+      // console.log(`[CMDPrompt DEBUG] Shift+Right detected. Ctrl: ${e.key.ctrl}`); // DEBUG
       if (e.key.ctrl) {
         // History recall by number if current line is a number
         const lineAsIndex = parseInt(this.rl.line, 10);
@@ -308,7 +379,7 @@ class CommandPrompt extends InputPrompt {
       }
     }
     this.render();
-    console.log(`[DEBUG CommandPrompt.onKeypress END] this.rl.line: "${this.rl.line}"`); // DEBUG
+    // console.log(`[DEBUG CommandPrompt.onKeypress END] this.rl.line: "${this.rl.line}"`); // DEBUG
   }
 
   async asyncAutoCompleter(line, cmds) {
@@ -368,21 +439,30 @@ class CommandPrompt extends InputPrompt {
   } else {
    return {match: options.filter(line)}
   }
- }
+  }
+
+  // _run method override removed. CommandPrompt will now inherit _run from InputPrompt.
 
   run() {
-    return new Promise( (resolve) => { // Using arrow function to preserve `this`
-      this._run( (value) => { // Using arrow function to preserve `this`
-        // Use this.historyHandler to add command, with this.context
-        this.historyHandler.add(this.context, value);
-        // No need to manage historyIndexes here, DefaultHistory's add() handles it.
+    return new Promise((resolve) => {
+      // The callback to _run is Inquirer's `done` function.
+      // We've wrapped it in _run to include cleanup.
+      // The original `done` (now `originalDone` in our `_run`) is what resolves the main promise.
+      // The `CommandPrompt.run` needs to add history *before* resolving its returned promise.
+      this._run((value) => { // This `value` is what the prompt resolves to.
+        // Add to history only if not canceled and if there's a value (or handle empty values as needed)
+        // Ctrl+C in multi-line mode calls onSubmit('') which becomes value='' here.
+        // Standard Enter on empty line might also be value=''.
+        if (value !== undefined) { // Or a more specific check if empty submissions shouldn't be historied
+            this.historyHandler.add(this.context, value);
+        }
         resolve(value);
       });
-    }); // No need for .bind(this) if using arrow functions
+    });
   }
 
   render(error) {
-    console.log(`[DEBUG CommandPrompt.render START] this.rl.line: "${this.rl.line}"`); // DEBUG
+    // console.log(`[DEBUG CommandPrompt.render START] this.rl.line: "${this.rl.line}"`); // DEBUG
   // rl = this.rl; // Removed assignment to global `rl`. `this.rl` is used directly below.
   let bottomContent = ''
   let appendContent = ''

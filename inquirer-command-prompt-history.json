@@ -46,6 +46,22 @@
       "git",
       "conda activate myenv",
       "git",
+      "conda activate myenv",
+      "git",
+      "conda activate myenv",
+      "git",
+      "conda activate myenv",
+      "git",
+      "conda activate myenv",
+      "git",
+      "conda activate myenv",
+      "git",
+      "conda activate myenv",
+      "git",
+      "conda activate myenv",
+      "git",
+      "conda activate myenv",
+      "git",
       "conda activate myenv"
     ],
     "param_ac_test_4": [
@@ -62,11 +78,13 @@
       "nonexistent"
     ],
     "multiline_test_1": [
-      "line2"
+      "line2",
+      "line1\nline2\nline3"
     ],
     "multiline_empty_start": [
       "first actual line",
-      "first actual linesecond actual line"
+      "first actual linesecond actual line",
+      "first actual line\nsecond actual line"
     ],
     "multiline_immediate_submit": [
       "single line for multi-mode\n"

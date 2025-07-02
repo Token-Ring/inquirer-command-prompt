@@ -35,10 +35,21 @@ function moveUp(rlInstance) {
   rlInstance.input.emit('keypress', '', { name: 'up' });
 }
 
-// Simulates pressing the 'Enter' key, for onKeypress handlers (e.g., multi-line newline)
-function pressEnterKey(rlInstance) {
+// Simulates pressing the 'Enter' key.
+// In multi-line mode (for the CommandPrompt tests), this should add the current line to the buffer.
+// Otherwise, it simulates a keypress (though Inquirer filters 'enter' keypresses).
+function pressEnterKey(rlInstance, currentPromptInstance) {
   console.log(`[DEBUG] pressEnterKey: Simulating 'enter' keypress. rl.line = "${rlInstance.line}"`);
-  rlInstance.input.emit('keypress', '', { name: 'enter' });
+  if (currentPromptInstance && currentPromptInstance.isMultiLineMode) {
+    // In multi-line mode, Enter should add current line to buffer and clear rl.line
+    currentPromptInstance.multiLineBuffer.push(rlInstance.line);
+    rlInstance.line = '';
+    // currentPromptInstance.render(); // Call render if visual update is part of test
+  } else {
+    // For single-line prompts or if prompt instance isn't passed,
+    // emit the keypress. Inquirer typically filters this specific event.
+    rlInstance.input.emit('keypress', '', { name: 'enter' });
+  }
 }
 
 // Simulates submitting the current rl.line (original 'enter' behavior for single-line prompts)
@@ -282,6 +293,7 @@ describe('inquirer-command-prompt', function () {
       p = getPromiseForAnswer(prompt); // For the next interaction (typing 'final')
 
       rl.input.emit('keypress', '', { name: 'right', shift: true }); // Display history
+      await Promise.resolve(); // Allow a tick for event processing and console output
 
       // We don't await 'p' here because displaying history doesn't resolve the prompt.
       // We are checking the side effect (console.log)
@@ -533,7 +545,7 @@ describe('inquirer-command-prompt', function () {
       assert.strictEqual(rl.line, '', 'Current rl.line should be empty for new multi-line input');
 
       type(rl, 'line2');
-      pressEnterKey(rl); // Add 'line2' to buffer
+      pressEnterKey(rl, prompt); // Add 'line2' to buffer
       await Promise.resolve();
 
       assert.deepStrictEqual(prompt.multiLineBuffer, ['line1', 'line2'], 'Buffer should contain first and second lines');
@@ -557,7 +569,7 @@ describe('inquirer-command-prompt', function () {
       assert.deepStrictEqual(prompt.multiLineBuffer, [], 'Buffer should be empty if started on empty line');
 
       type(rl, 'first actual line');
-      pressEnterKey(rl);
+      pressEnterKey(rl, prompt);
       await Promise.resolve();
 
       type(rl, 'second actual line');
